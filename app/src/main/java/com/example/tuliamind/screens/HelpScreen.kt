@@ -23,19 +23,40 @@ private data class Contact(
     val type: String
 )
 
+/** Built-in contacts. Always shown, so crisis numbers work even with no internet. */
+private val builtInContacts = listOf(
+    Contact("Kenya Red Cross counselling", "Free counselling line",                             "1199",         "Crisis"),
+    Contact("Befrienders Kenya",           "Emotional support and suicide prevention",          "+254722178177","Crisis"),
+    Contact("National emergency",          "Police, ambulance, fire",                           "999",          "Crisis"),
+    Contact("University counselling",      "SAMPLE: replace with your campus counsellor",       "0700000001",   "Clinical"),
+    Contact("County referral hospital",    "SAMPLE: mental health clinic",                      "0700000002",   "Clinical"),
+    Contact("Guidance teacher",            "SAMPLE: trained guidance and counselling teacher",  "0700000003",   "Lay"),
+    Contact("Community health volunteer",  "SAMPLE: trained in psychological first aid",        "0700000004",   "Lay"),
+    Contact("Chaplain or youth leader",    "SAMPLE: faith-based support",                       "0700000005",   "Lay")
+)
+
 @Composable
 fun HelpScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val contacts = listOf(
-        Contact("Kenya Red Cross counselling", "Free counselling line",                             "1199",         "Crisis"),
-        Contact("Befrienders Kenya",           "Emotional support and suicide prevention",          "+254722178177","Crisis"),
-        Contact("National emergency",          "Police, ambulance, fire",                           "999",          "Crisis"),
-        Contact("University counselling",      "SAMPLE: replace with your campus counsellor",       "0700000001",   "Clinical"),
-        Contact("County referral hospital",    "SAMPLE: mental health clinic",                      "0700000002",   "Clinical"),
-        Contact("Guidance teacher",            "SAMPLE: trained guidance and counselling teacher",  "0700000003",   "Lay"),
-        Contact("Community health volunteer",  "SAMPLE: trained in psychological first aid",        "0700000004",   "Lay"),
-        Contact("Chaplain or youth leader",    "SAMPLE: faith-based support",                       "0700000005",   "Lay")
-    )
+    var contacts by remember { mutableStateOf(builtInContacts) }
+    var source by remember { mutableStateOf("Showing built-in contacts") }
+
+    // Load the latest helplines from the cloud and merge with the built-in list.
+    // A cloud entry replaces a built-in one that has the same phone number.
+    LaunchedEffect(Unit) {
+        RemoteDb.loadHelplines(
+            onResult = { cloud ->
+                if (cloud.isNotEmpty()) {
+                    val fromCloud = cloud.map { Contact(it.name, it.description, it.number, it.category) }
+                    val cloudNumbers = fromCloud.map { it.number }.toSet()
+                    contacts = fromCloud + builtInContacts.filter { it.number !in cloudNumbers }
+                    source = "Updated from the cloud"
+                }
+            },
+            onError = { source = "Offline: showing built-in contacts" }
+        )
+    }
+
     val filters = listOf("All", "Crisis", "Clinical", "Lay")
     var filter by remember { mutableStateOf("All") }
 
@@ -51,6 +72,7 @@ fun HelpScreen(onBack: () -> Unit) {
             color = Carbon.Gray30,
             fontSize = 13.sp
         )
+        Text(source, color = Carbon.Gray30, fontSize = 11.sp)
         Spacer(Modifier.height(16.dp))
 
         // ── Filter tabs ──────────────────────────────────────────────────────
