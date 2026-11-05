@@ -24,6 +24,9 @@ import java.util.Calendar
  * BookingScreen showcases every required UI widget in one real use-case:
  * TextView · TextField · AutoComplete · Spinner · DatePicker · TimePicker
  * RadioButton · CheckBox · Button
+ *
+ * Bookings are saved on the phone (SQLite) AND sent to the cloud (Firestore)
+ * so the counselling service can actually receive them. Only bookings go to the cloud.
  */
 @Composable
 fun BookingScreen(onBack: () -> Unit) {
@@ -48,6 +51,7 @@ fun BookingScreen(onBack: () -> Unit) {
     var consent    by remember { mutableStateOf(false) }
     var error      by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
+    var cloudStatus  by remember { mutableStateOf("") }
     var appointments by remember { mutableStateOf(db.appointments()) }
 
     fun pickDate() {
@@ -77,7 +81,7 @@ fun BookingScreen(onBack: () -> Unit) {
             Text("Talk to someone", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Fill in the form and your appointment is saved on this phone.",
+                "Fill in the form. Your appointment is saved on this phone and sent securely to the counselling service.",
                 color = Carbon.Gray30, fontSize = 13.sp
             )
         }
@@ -148,11 +152,29 @@ fun BookingScreen(onBack: () -> Unit) {
                 else                              -> ""
             }
             if (error.isEmpty()) {
-                db.addAppointment(
-                    name.trim(), counsellor, county, date, time, mode,
-                    topics.joinToString(", "), notes.trim()
+                // Copy the values first, because the form is cleared below
+                val bName = name.trim()
+                val bCounsellor = counsellor
+                val bCounty = county
+                val bDate = date
+                val bTime = time
+                val bMode = mode
+                val bTopics = topics.joinToString(", ")
+                val bNotes = notes.trim()
+                val bConsent = consent
+
+                // 1) Save on the phone (always works, even offline)
+                db.addAppointment(bName, bCounsellor, bCounty, bDate, bTime, bMode, bTopics, bNotes)
+
+                // 2) Send to the cloud
+                cloudStatus = "Sending to the counselling service..."
+                RemoteDb.addAppointment(
+                    bName, bCounsellor, bCounty, bDate, bTime, bMode, bTopics, bNotes, bConsent,
+                    onDone = { cloudStatus = "✅ Also received by the counselling service." },
+                    onError = { cloudStatus = "Saved on your phone. Could not reach the service: $it" }
                 )
-                confirmation = "Booked: $counsellor on $date at $time ($mode), $county."
+
+                confirmation = "Booked: $bCounsellor on $bDate at $bTime ($bMode), $bCounty."
                 appointments = db.appointments()
                 name = ""; county = ""; date = ""; time = ""
                 notes = ""; consent = false; topics.clear()
@@ -165,6 +187,10 @@ fun BookingScreen(onBack: () -> Unit) {
                 Text("✅ Appointment saved", fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.height(4.dp))
                 Text(confirmation, color = Carbon.Gray10, fontSize = 13.sp)
+                if (cloudStatus.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(cloudStatus, color = Carbon.Gray30, fontSize = 12.sp)
+                }
             }
         }
 
